@@ -1,116 +1,162 @@
-// Licensed to the Software Freedom Conservancy (SFC) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The SFC licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
+use std::thread::sleep;
+use std::{error::Error, time::Duration};
 
-use crate::files::compose_cache_folder;
-use std::fs;
+use serde::{Deserialize, Serialize};
+use thirtyfour::prelude::*;
+use thirtyfour::{prelude::WebDriverResult, By, DesiredCapabilities, WebDriver};
 
-use reqwest::{Client, Proxy};
 
-use std::error::Error;
+//const APP_NAME: &str = "epubit-integral";
+const CONFIG: &str = "./default-config.toml";
 
-use std::time::Duration;
+#[derive(Serialize, Deserialize, Default, Debug)]
+struct AppConfig {
+    accounts: Vec<Account>,
+}
 
-use crate::logger::Logger;
+#[derive(Serialize, Deserialize, Default, Debug)]
+struct Account {
+    username: String,
+    password: String,
+    page_number: usize,
+}
 
-pub mod config;
+pub fn add_account(
+    username: &str,
+    password: &str,
+    page_number: &Option<usize>,
+) -> Result<(), confy::ConfyError> {
+    let mut cfg: AppConfig = confy::load_path(CONFIG)?;
+    cfg.accounts.push(Account {
+        username: username.to_owned(),
+        password: password.to_owned(),
+        page_number: page_number.unwrap_or(1),
+    });
+    confy::store_path(CONFIG, cfg)?;
+    Ok(())
+}
 
-pub mod files;
+pub async fn run() -> Result<(), Box<dyn Error>> {
+    let mut cfg: AppConfig = confy::load_path(CONFIG)?;
 
-pub mod logger;
+    // todo 通过命令行参数设置浏览器为edge
 
-pub const REQUEST_TIMEOUT_SEC: u64 = 180; // The timeout is applied from when the request starts connecting until the response body has finished
-pub const STABLE: &str = "stable";
-pub const BETA: &str = "beta";
-pub const DEV: &str = "dev";
-pub const CANARY: &str = "canary";
-pub const NIGHTLY: &str = "nightly";
-pub const WMIC_COMMAND: &str = r#"wmic datafile where name='{}' get Version /value"#;
-pub const WMIC_COMMAND_ENV: &str =
-    r#"set PFILES=%{}{}%&& wmic datafile where name='!PFILES:\=\\!{}' get Version /value"#;
-pub const WMIC_COMMAND_OS: &str = r#"wmic os get osarchitecture"#;
-pub const REG_QUERY: &str = r#"REG QUERY {} /v version"#;
-pub const REG_QUERY_FIND: &str = r#"REG QUERY {} /f {}"#;
-pub const PLIST_COMMAND: &str =
-    r#"/usr/libexec/PlistBuddy -c "print :CFBundleShortVersionString" {}/Contents/Info.plist"#;
-pub const DASH_VERSION: &str = "{} -v";
-pub const DASH_DASH_VERSION: &str = "{} --version";
-pub const ENV_PROGRAM_FILES: &str = "PROGRAMFILES";
-pub const ENV_PROGRAM_FILES_X86: &str = "PROGRAMFILES(X86)";
-pub const ENV_LOCALAPPDATA: &str = "LOCALAPPDATA";
-pub const REMOVE_X86: &str = ": (x86)=";
-pub const ARCH_X86: &str = "x86";
-pub const ARCH_AMD64: &str = "amd64";
-pub const ARCH_ARM64: &str = "arm64";
-pub const ENV_PROCESSOR_ARCHITECTURE: &str = "PROCESSOR_ARCHITECTURE";
-pub const WHERE_COMMAND: &str = "where {}";
-pub const WHICH_COMMAND: &str = "which {}";
-pub const TTL_BROWSERS_SEC: u64 = 0;
-pub const TTL_DRIVERS_SEC: u64 = 86400;
-pub const UNAME_COMMAND: &str = "uname -{}";
-pub const CRLF: &str = "\r\n";
-pub const LF: &str = "\n";
-
-pub fn clear_cache(log: &Logger) {
-    let cache_path = compose_cache_folder();
-    if cache_path.exists() {
-        log.debug(format!("Clearing cache at: {}", cache_path.display()));
-        fs::remove_dir_all(&cache_path).unwrap_or_else(|err| {
-            log.warn(format!(
-                "The cache {} cannot be cleared: {}",
-                cache_path.display(),
-                err
-            ))
-        });
+    for account in &mut cfg.accounts {
+        let caps = DesiredCapabilities::chrome();
+        let driver = WebDriver::new("http://localhost:9515", caps).await?;
+        login(&driver, account).await?;
+        share_book(&driver, account).await?;
+        share_course(&driver).await?;
+        driver.quit().await?;
     }
+    println!("{:?}", cfg);
+    confy::store_path(CONFIG, cfg)?;
+    Ok(())
 }
 
-pub fn create_http_client(timeout: u64, proxy: &str) -> Result<Client, Box<dyn Error>> {
-    let mut client_builder = Client::builder()
-        .danger_accept_invalid_certs(true)
-        .use_rustls_tls()
-        .timeout(Duration::from_secs(timeout));
-    if !proxy.is_empty() {
-        client_builder = client_builder.proxy(Proxy::all(proxy)?);
+async fn login(driver: &WebDriver, account: &Account) -> WebDriverResult<()> {
+    driver.goto("https://www.epubit.com/").await?;
+    let login_button = driver
+        .find(By::XPath("//*[@id='entry']/div[1]/nav/div[2]/div[1]/i[1]"))
+        .await?;
+    login_button.click().await?;
+    sleep(Duration::from_millis(2000));
+    let username_input = driver.find(By::Id("username")).await?;
+    sleep(Duration::from_millis(1000));
+    username_input.send_keys(&account.username).await?;
+    let password_input = driver.find(By::Id("password")).await?;
+    sleep(Duration::from_millis(1000));
+    password_input.send_keys(&account.password).await?;
+    let login_button = driver.find(By::Id("passwordLoginBtn")).await?;
+    sleep(Duration::from_millis(500));
+    login_button.click().await?;
+    Ok(())
+}
+
+async fn share_book(driver: &WebDriver, account: &mut Account) -> WebDriverResult<()> {
+    driver.goto("https://www.epubit.com/books").await?;
+    sleep(Duration::from_millis(300));
+
+    for _i in 1..account.page_number {
+        driver
+            .find(By::ClassName("btn-next"))
+            .await?
+            .click()
+            .await?;
+        sleep(Duration::from_millis(1500));
     }
-    Ok(client_builder.build().unwrap_or_default())
+
+    let mut counter = 0;
+
+    while counter < 10 {
+        let book_list_element = driver.find(By::ClassName("book-list")).await?;
+        let book_list = book_list_element.find_all(By::Tag("a")).await?;
+        for book in book_list {
+            book.click().await?;
+            for window in driver.windows().await? {
+                let original_window = driver.window().await?;
+                if window != original_window {
+                    driver.switch_to_window(window).await?;
+                    if let Err(_) = driver
+                        .query(By::ClassName("icon-dianzan"))
+                        .wait(Duration::from_millis(2500), Duration::from_millis(300))
+                        .single()
+                        .await
+                    {
+                        let dianzan1 = driver.find(By::ClassName("icon-dianzan1")).await?;
+                        dianzan1.click().await?;
+                        driver
+                            .find(By::ClassName("icon-2101fenxiang"))
+                            .await?
+                            .click()
+                            .await?;
+                        counter += 1;
+                        println!("点赞成功:{}", counter);
+                        sleep(Duration::from_millis(300));
+                    }
+                    driver.close_window().await?;
+                    driver.switch_to_window(original_window).await?;
+                    break;
+                }
+            }
+            if counter >= 10 {
+                println!("点赞数量完成");
+                break;
+            }
+        }
+        driver
+            .find(By::ClassName("btn-next"))
+            .await?
+            .click()
+            .await?;
+        sleep(Duration::from_millis(1500));
+        account.page_number += 1;
+    }
+    account.page_number -= 1;
+    Ok(())
 }
 
-pub fn format_one_arg(string: &str, arg1: &str) -> String {
-    string.replacen("{}", arg1, 1)
-}
-
-pub fn format_two_args(string: &str, arg1: &str, arg2: &str) -> String {
-    string.replacen("{}", arg1, 1).replacen("{}", arg2, 1)
-}
-
-pub fn format_three_args(string: &str, arg1: &str, arg2: &str, arg3: &str) -> String {
-    string
-        .replacen("{}", arg1, 1)
-        .replacen("{}", arg2, 1)
-        .replacen("{}", arg3, 1)
-}
-
-// ----------------------------------------------------------
-// Private functions
-// ----------------------------------------------------------
-
-fn strip_trailing_newline(input: &str) -> &str {
-    input
-        .strip_suffix(CRLF)
-        .or_else(|| input.strip_suffix(LF))
-        .unwrap_or(input)
+async fn share_course(driver: &WebDriver) -> WebDriverResult<()> {
+    driver.goto("https://www.epubit.com/course").await?;
+    sleep(Duration::from_millis(500));
+    let course_list_element = driver.find(By::ClassName("course-list")).await?;
+    let course_list = course_list_element.find_all(By::Tag("a")).await?;
+    for course in course_list {
+        course.click().await?;
+        for window in driver.windows().await? {
+            let original_window = driver.window().await?;
+            if window != original_window {
+                driver.switch_to_window(window).await?;
+                let share_button = driver.find(By::ClassName("icon-2101fenxiang")).await?;
+                sleep(Duration::from_millis(500));
+                share_button.click().await?;
+                println!("分享课程成功");
+                sleep(Duration::from_millis(300));
+                driver.close_window().await?;
+                driver.switch_to_window(original_window).await?;
+                break;
+            }
+        }
+    }
+    Ok(())
 }
