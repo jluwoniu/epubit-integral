@@ -59,17 +59,18 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
 
 async fn login(driver: &WebDriver, account: &Account) -> WebDriverResult<()> {
     driver.goto("https://www.epubit.com/").await?;
-    sleep(Duration::from_millis(300));
+    sleep(Duration::from_millis(1000));
     let login_button = driver
         .query(By::ClassName("login"))
         .wait(Duration::from_secs(10), Duration::from_millis(100))
         .first()
         .await?
         .query(By::Tag("i"))
-        .and_clickable()
+        .with_text("登录")
         .wait(TIMEOUT, INTERVAL)
         .first()
         .await?;
+    login_button.wait_until().clickable().await?;
     login_button.click().await?;
     let username_input = driver
         .query(By::Id("username"))
@@ -96,13 +97,13 @@ async fn login(driver: &WebDriver, account: &Account) -> WebDriverResult<()> {
 //点赞并分享图书
 async fn share_book(driver: &WebDriver, account: &mut Account) -> WebDriverResult<()> {
     driver.goto("https://www.epubit.com/books").await?;
-    sleep(Duration::from_millis(300));
+    sleep(Duration::from_millis(500));
     //点击下一页,直到上次运行保存的页数
     for _i in 1..account.page_number {
         driver
             .query(By::ClassName("btn-next"))
             .and_clickable()
-            .wait(Duration::from_secs(10), Duration::from_millis(100))
+            .wait(TIMEOUT, INTERVAL)
             .first()
             .await?
             .click()
@@ -119,7 +120,6 @@ async fn share_book(driver: &WebDriver, account: &mut Account) -> WebDriverResul
             .await?;
         let book_list = book_list_element
             .query(By::Tag("a"))
-            .and_clickable()
             .wait(TIMEOUT, INTERVAL)
             .all()
             .await?;
@@ -131,7 +131,7 @@ async fn share_book(driver: &WebDriver, account: &mut Account) -> WebDriverResul
                     driver.switch_to_window(window).await?;
                     if let Err(_) = driver
                         .query(By::ClassName("icon-dianzan"))
-                        .wait(Duration::from_secs(3), Duration::from_millis(100))
+                        .wait(DIANZAN_TIMEOUT, INTERVAL)
                         .single()
                         .await
                     {
@@ -141,6 +141,7 @@ async fn share_book(driver: &WebDriver, account: &mut Account) -> WebDriverResul
                             .await?
                             .click()
                             .await?;
+                        sleep(Duration::from_millis(300));
                         //分享图书
                         driver
                             .find(By::ClassName("icon-2101fenxiang"))
