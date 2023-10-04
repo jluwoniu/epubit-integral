@@ -47,13 +47,31 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         let caps = DesiredCapabilities::edge();
         let driver = WebDriver::new("http://localhost:9515", caps).await?;
         login(&driver, account).await?;
+        log_integral(&driver).await?;
         share_book(&driver, account).await?;
         share_course(&driver).await?;
+        log_integral(&driver).await?;
         sleep(Duration::from_secs(5));
         driver.quit().await?;
     }
     println!("{:?}", cfg);
     confy::store_path(CONFIG, cfg)?;
+    Ok(())
+}
+
+async fn log_integral(driver: &WebDriver) -> WebDriverResult<()> {
+    driver
+        .goto("https://www.epubit.com/user/sampleIndex")
+        .await?;
+    sleep(Duration::from_millis(500));
+    let integral_ele = driver
+        .query(By::ClassName("main_color"))
+        .with_tag("span")
+        .wait(TIMEOUT, INTERVAL)
+        .first()
+        .await?;
+    let integral = integral_ele.text().await?;
+    println!("{}", integral);
     Ok(())
 }
 
