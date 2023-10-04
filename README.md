@@ -9,7 +9,7 @@
 3. 复制default-config.toml到epubit-integral.exe同一目录下,修改配置文件的用户名和密码
 3. 
 ```cmd
-epubit-integral.exe --run
+epubit-integral.exe run
 
 ```
 
