@@ -197,7 +197,7 @@ async fn share_book(driver: &WebDriver, account: &mut Account) -> WebDriverResul
 //分享课程
 async fn share_course(driver: &WebDriver) -> WebDriverResult<()> {
     driver.goto("https://www.epubit.com/course").await?;
-    sleep(Duration::from_millis(300));
+    sleep(Duration::from_millis(2000));
     let course_list_element = driver
         .query(By::ClassName("course-list"))
         .wait(TIMEOUT, INTERVAL)
