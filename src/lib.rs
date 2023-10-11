@@ -1,6 +1,7 @@
 use std::thread::sleep;
 use std::{error::Error, time::Duration};
 
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use thirtyfour::prelude::*;
 use thirtyfour::{prelude::WebDriverResult, By, DesiredCapabilities, WebDriver};
@@ -25,6 +26,14 @@ struct Account {
     page_number: usize,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+pub enum Driver {
+    /// chrome
+    Chrome,
+    /// edge
+    Edge,
+}
+
 pub fn add_account(
     username: &str,
     password: &str,
@@ -40,12 +49,16 @@ pub fn add_account(
     Ok(())
 }
 
-pub async fn run() -> Result<(), Box<dyn Error>> {
+pub async fn run(driver: &Driver) -> Result<(), Box<dyn Error>> {
     let mut cfg: AppConfig = confy::load_path(CONFIG)?;
     // todo 通过命令行参数设置浏览器为chrome
     for account in &mut cfg.accounts {
-        let caps = DesiredCapabilities::edge();
-        let driver = WebDriver::new("http://localhost:9515", caps).await?;
+        let driver = match driver {
+            Driver::Chrome => {
+                WebDriver::new("http://localhost:9515", DesiredCapabilities::chrome()).await?
+            }
+            _ => WebDriver::new("http://localhost:9515", DesiredCapabilities::edge()).await?,
+        };
         login(&driver, account).await?;
         log_integral(&driver).await?;
         share_book(&driver, account).await?;

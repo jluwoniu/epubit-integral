@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use clap::{Parser, Subcommand};
-use epubit_integral::{add_account, run};
+use epubit_integral::{add_account, run, Driver};
 #[derive(Parser)]
 #[command(name = "epubit-integral")]
 #[command(author = "jluwoniu<jluwoniu@outlook.com>")]
@@ -27,8 +27,13 @@ enum Commands {
         page_number: Option<usize>,
     },
     /// 运行积分任务
-    Run,
+    Run {
+        /// 浏览器驱动
+        #[arg[short,long,default_value="chrome"]]
+        driver: Driver,
+    },
 }
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli: Cli = Cli::parse();
@@ -40,8 +45,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         } => {
             add_account(username, password, page_number)?;
         }
-        Commands::Run => {
-            run().await?;
+        Commands::Run { driver } => {
+            run(driver).await?;
         }
     }
     Ok(())
