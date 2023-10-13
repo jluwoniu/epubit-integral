@@ -3,8 +3,9 @@ use std::{error::Error, time::Duration};
 
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
-use thirtyfour::prelude::*;
+use serde_json::{from_value, to_value};
 use thirtyfour::{prelude::WebDriverResult, By, DesiredCapabilities, WebDriver};
+use thirtyfour::{prelude::*, CapabilitiesHelper};
 
 //const APP_NAME: &str = "epubit-integral";
 const CONFIG: &str = "./default-config.toml";
@@ -55,9 +56,26 @@ pub async fn run(driver: &Driver) -> Result<(), Box<dyn Error>> {
     for account in &mut cfg.accounts {
         let driver = match driver {
             Driver::Chrome => {
-                WebDriver::new("http://localhost:9515", DesiredCapabilities::chrome()).await?
+                let mut caps = DesiredCapabilities::chrome();
+                caps.add_chrome_arg("--start-maximized")?;
+                WebDriver::new("http://localhost:9515", caps).await?
             }
-            _ => WebDriver::new("http://localhost:9515", DesiredCapabilities::edge()).await?,
+            _ => {
+                let mut caps = DesiredCapabilities::edge();
+
+                // let mut args: Vec<String> = caps
+                //     .get("goog:chromeOptions")
+                //     .and_then(|options| options.get("args"))
+                //     .and_then(|option| from_value(option.clone()).ok())
+                //     .unwrap_or_default();
+                // let arg_string = "--start-maximized".to_string();
+                // if !args.contains(&arg_string) {
+                //     args.push(arg_string);
+                // }
+                caps.add_subkey("goog:chromeOptions", "args", to_value(vec!["start-maximized"])?)?;
+
+                WebDriver::new("http://localhost:9515", caps).await?
+            }
         };
         login(&driver, account).await?;
         log_integral(&driver).await?;
