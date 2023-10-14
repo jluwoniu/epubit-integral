@@ -1,11 +1,9 @@
 use std::thread::sleep;
 use std::{error::Error, time::Duration};
 
-use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
-use serde_json::{from_value, to_value};
+use thirtyfour::prelude::*;
 use thirtyfour::{prelude::WebDriverResult, By, DesiredCapabilities, WebDriver};
-use thirtyfour::{prelude::*, CapabilitiesHelper};
 
 //const APP_NAME: &str = "epubit-integral";
 const CONFIG: &str = "./default-config.toml";
@@ -27,62 +25,19 @@ struct Account {
     page_number: usize,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-pub enum Driver {
-    /// chrome
-    Chrome,
-    /// edge
-    Edge,
-}
-
-pub fn add_account(
-    username: &str,
-    password: &str,
-    page_number: &Option<usize>,
-) -> Result<(), confy::ConfyError> {
+pub async fn run() -> Result<(), Box<dyn Error>> {
     let mut cfg: AppConfig = confy::load_path(CONFIG)?;
-    cfg.accounts.push(Account {
-        username: username.to_owned(),
-        password: password.to_owned(),
-        page_number: page_number.unwrap_or(1),
-    });
-    confy::store_path(CONFIG, cfg)?;
-    Ok(())
-}
-
-pub async fn run(driver: &Driver) -> Result<(), Box<dyn Error>> {
-    let mut cfg: AppConfig = confy::load_path(CONFIG)?;
-    // todo 通过命令行参数设置浏览器为chrome
+    // thirtyfour crate 不支持edge设置option,改为chrome浏览器
     for account in &mut cfg.accounts {
-        let driver = match driver {
-            Driver::Chrome => {
-                let mut caps = DesiredCapabilities::chrome();
-                caps.add_chrome_arg("--start-maximized")?;
-                WebDriver::new("http://localhost:9515", caps).await?
-            }
-            _ => {
-                let mut caps = DesiredCapabilities::edge();
-
-                // let mut args: Vec<String> = caps
-                //     .get("goog:chromeOptions")
-                //     .and_then(|options| options.get("args"))
-                //     .and_then(|option| from_value(option.clone()).ok())
-                //     .unwrap_or_default();
-                // let arg_string = "--start-maximized".to_string();
-                // if !args.contains(&arg_string) {
-                //     args.push(arg_string);
-                // }
-                caps.add_subkey("goog:chromeOptions", "args", to_value(vec!["start-maximized"])?)?;
-
-                WebDriver::new("http://localhost:9515", caps).await?
-            }
-        };
+        let mut caps = DesiredCapabilities::chrome();
+        // 最大化运行浏览器可以显示点赞按钮,不用等待页面滚动,可以提高速度
+        caps.add_chrome_arg("--start-maximized")?;
+        let driver = WebDriver::new("http://localhost:9515", caps).await?;
         login(&driver, account).await?;
         log_integral(&driver).await?;
         share_book(&driver, account).await?;
         share_course(&driver).await?;
         log_integral(&driver).await?;
-        sleep(Duration::from_secs(5));
         driver.quit().await?;
     }
     println!("{:?}", cfg);
