@@ -32,6 +32,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         let mut caps = DesiredCapabilities::chrome();
         // 最大化运行浏览器可以显示点赞按钮,不用等待页面滚动,可以提高速度
         caps.add_chrome_arg("--start-maximized")?;
+        caps.add_chrome_arg("--headless")?;
         let driver = WebDriver::new("http://localhost:9515", caps).await?;
         login(&driver, account).await?;
         log_integral(&driver).await?;
